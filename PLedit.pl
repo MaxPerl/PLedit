@@ -133,7 +133,7 @@ sub create_menubar {
 	my $menu_item_quit = Gtk3::MenuItem->new();
 	$menu_item_quit->set_label("Quit");
 	$menu->insert($menu_item_quit,4);
-	$menu_item_quit->signal_connect("activate" => sub {Gtk3->main_quit();});
+	$menu_item_quit->signal_connect("activate" => \&quit_cb);
 	
 	# das Menu muss nun dem Menubaritem hinzugefügt werden
 	$menubar_item->set_submenu($menu);
