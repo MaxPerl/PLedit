@@ -861,6 +861,23 @@ sub close_tab_save_dialog {
 			$save_dialog->show();
 		}
 	}
+	else {
+		# and remove the page
+			$notebook->remove_page($m);
+			# splice the elements with index $m from the arrays
+			splice @filenames, $m, 1;
+			splice @label, $m, 1;
+			splice @changed_status, $m, 1;
+			splice @buttons, $m, 1;
+			splice @buffer, $m, 1;
+			splice @textview, $m, 1;
+		
+			# Das durch die x-Button jeweils übergebene Argument muss noch geändert werden
+			# da sich der Index um 1 verringert hat
+			for (my $i = 0; $i<= $#buttons; $i++) {
+			$buttons[$i]->signal_connect('clicked'=>\&close_tab, $i);
+			}
+	}
 	
 	# finally destroy the messagedialog
 	$widget->destroy();
