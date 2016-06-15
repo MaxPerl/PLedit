@@ -1,23 +1,17 @@
 #!/usr/bin/env perl
 
-use strict;
-use utf8;
-use Gtk3 -init;
-use Glib ("TRUE","FALSE");
-use Gtk3::SourceView;
-
-# construct a window
-my $window = Gtk3::Window->new("toplevel");
-$window->set_title ("PLedit");
-$window->set_default_size (800, 400);
-$window->set_icon_name("accessories-text-editor");
-$window->signal_connect("delete-event" => sub {
-	quit_cb();
-	Gtk3::EVENT_STOP;
-	});
+# Binding to the Gio API
+BEGIN {
+use Glib::Object::Introspection;
+	Glib::Object::Introspection->setup(
+	basename => 'Gio',
+	version => '2.0',
+	package => 'Glib::IO');
+}
 
 # VARIABLES
-# Variables for the MAIN PROGRAM
+# the window
+my $window;
 # the filenames
 my @filenames;
 # the labels for the tabs
@@ -30,6 +24,8 @@ my @buttons;
 my @buffer;
 # Eine Liste mit allen Textviews
 my @textview;
+# Das Notebook
+my $notebook;
 # Und eine Variable zum Ermitteln der aktuellen Seite im Notebook
 my $n;
 # Zum neuen Anlegen bzw. Öffnen einer Datei benötigen wir auch die Anzahl der Seiten (= Nummer der neu angelegten bzw. geöffneten Seite!)
@@ -38,8 +34,8 @@ my $m;
 # Variables for the SEARCH/REPLACE FUNCTION
 # Variables to save a Gtk3::TextIter for the start and end position
 # of the current search result
-my $start;
-my $end;
+my $startmark;
+my $endmark;
 # For the search and replace function we need first a search context
 # associated with the current buffer
 my @search_context;
@@ -53,192 +49,111 @@ my $selected_item;
 # and a hash to the menuitems
 my %menuitems_syntax;
 
-# THE MENU
-# create a menubar
-my $menubar = create_menubar();
+# The CLASS MyWindow
+package MyWindow;
 
-# THE TOOLBAR
-# we create the toolbar in the method create_toolbar (see below)
-my $toolbar = create_toolbar();
-# the toolbar shall expand horizontally
-$toolbar->set_hexpand(TRUE);
-# show the toolbar
-$toolbar->show();
+use strict;
+use utf8;
 
-# A GTK Notebook for the tabs
-my $notebook = Gtk3::Notebook->new();
-$notebook->signal_connect("switch-page" => \&change_current_page);
+use Gtk3;
+use Glib ("TRUE","FALSE");
+use Gtk3::SourceView;
 
-# add the menubar, toolbar and the notebook to a grid
-my $grid=Gtk3::Grid->new();
-$grid->attach($menubar,0,0,1,1);
-$grid->attach($toolbar,0,1,1,1);
-$grid->attach($notebook,0,2,1,1);
+# Inherit the methods, properties etc. of Gtk3::ApplicationWindow
+use base 'Gtk3::ApplicationWindow';
 
-# add the grid to the window
-$window->add($grid);
 
-# show the window and run the Application
-$window -> show_all();
-Gtk3->main();
-
-# THE FUNCTION TO CREATE THE MENUBAR
-sub create_menubar {
-	my $menubar = Gtk3::MenuBar->new;
-	$menubar->show();
-
-	# DATEI - MENU
-	# create an item onto the menubar
-	my $menubar_item = Gtk3::MenuItem->new_with_label("Datei");
-	$menubar->insert($menubar_item,0);
-
-	my $menubar_item_bearbeiten = Gtk3::MenuItem->new_with_label("Bearbeiten");
-	$menubar->insert($menubar_item_bearbeiten,1);
+# THE CONSTRUCTOR FUNCTION
+sub new {
+	my ($window, $app) = @_;
 	
-	my $menubar_item_settings = Gtk3::MenuItem->new_with_label("Einstellungen");
-	$menubar->insert($menubar_item_settings,2);
+	# construct the window
+	$window = bless Gtk3::ApplicationWindow->new($app);
+	$window->set_title ("PLedit");
+	$window->set_default_size (800, 400);
+	$window->set_icon_name("accessories-text-editor");
 	
-	my $menubar_item_help = Gtk3::MenuItem->new_with_label("Hilfe");
-	$menubar->insert($menubar_item_help,3);
-	
-	# create the menu
-	my $menu = Gtk3::Menu->new();
+	# THE TOOLBAR
+	# we create the toolbar in the method create_toolbar (see below)
+	#my $toolbar = create_toolbar();
+	# the toolbar shall expand horizontally
+	#$toolbar->set_hexpand(TRUE);
+	# show the toolbar
+	#$toolbar->show();
 
-	# append to the menu the options:
+	# Window Actions
 	# NEW
-	my $menu_item_new = Gtk3::MenuItem->new();
-	$menu_item_new->set_label("New");
-	$menu->insert($menu_item_new,0);
-	$menu_item_new->signal_connect("activate" => \&new_callback);
-
+	my $new_action = Glib::IO::SimpleAction->new('new', undef);
+	$new_action->signal_connect('activate'=>\&new_callback);
+	$window->add_action($new_action);
+	
 	# OPEN
-	my $menu_item_open = Gtk3::MenuItem->new();
-	$menu_item_open->set_label("Open");
-	$menu->insert($menu_item_open,1);
-	$menu_item_open->signal_connect("activate" => \&open_callback);
+	my $open_action = Glib::IO::SimpleAction->new('open', undef);
+	$open_action->signal_connect('activate'=>\&open_callback);
+	$window->add_action($open_action);
 	
 	# SAVE
-	my $menu_item_save = Gtk3::MenuItem->new();
-	$menu_item_save->set_label("Save");
-	$menu->insert($menu_item_save,2);
-	$menu_item_save->signal_connect("activate" => \&save_callback);
+	my $save_action = Glib::IO::SimpleAction->new('save', undef);
+	$save_action->signal_connect('activate'=>\&save_callback);
+	$window->add_action($save_action);
 	
 	# SAVE_AS
-	my $menu_item_save_as = Gtk3::MenuItem->new();
-	$menu_item_save_as->set_label("Save as");
-	$menu->insert($menu_item_save_as,3);
-	$menu_item_save_as->signal_connect("activate" => \&save_as_callback);
+	my $save_as_action = Glib::IO::SimpleAction->new('save_as', undef);
+	$save_as_action->signal_connect('activate'=>\&save_as_callback);
+	$window->add_action($save_as_action);
 	
-	# QUIT
-	my $menu_item_quit = Gtk3::MenuItem->new();
-	$menu_item_quit->set_label("Quit");
-	$menu->insert($menu_item_quit,4);
-	$menu_item_quit->signal_connect("activate" => \&quit_cb);
-	
-	# das Menu muss nun dem Menubaritem hinzugefügt werden
-	$menubar_item->set_submenu($menu);
-
-	# BEARBEITEN - MENU
-	my $bearbeiten_menu = Gtk3::Menu->new();
-
-	# append to the $bearbeiten_menu the following options
 	# RÜCKGÄNGIG
-	my $menu_item_undo = Gtk3::MenuItem->new();
-	$menu_item_undo->set_label("Rückgängig");
-	$bearbeiten_menu->insert($menu_item_undo,1);
-	$menu_item_undo->signal_connect("activate" => sub {$buffer[$n]->undo() if ($buffer[$n]->can_undo);});
-
+	my $undo_action = Glib::IO::SimpleAction->new('undo', undef);
+	$undo_action->signal_connect('activate'=>sub {$buffer[$n]->undo() if ($buffer[$n]->can_undo);});
+	$window->add_action($undo_action);
+	
 	# WIEDERHERSTELLEN
-	my $menu_item_redo = Gtk3::MenuItem->new();
-	$menu_item_redo->set_label("Wiederherstellen");
-	$bearbeiten_menu->insert($menu_item_redo,1);
-	$menu_item_redo->signal_connect("activate" => sub {$buffer[$n]->redo() if ($buffer[$n]->can_redo);});
-
+	my $redo_action = Glib::IO::SimpleAction->new('redo', undef);
+	$redo_action->signal_connect('activate'=>sub {$buffer[$n]->redo() if ($buffer[$n]->can_redo);});
+	$window->add_action($redo_action);
+	
 	# SUCHEN UND ERSETZEN
-	my $menu_item_search = Gtk3::MenuItem->new();
-	$menu_item_search->set_label("Suchen/Ersetzen");
-	$bearbeiten_menu->insert($menu_item_search,2);
-	$menu_item_search->signal_connect("activate" => \&search_dialog);
-
-	# das Menu muss nun dem Menubaritem hinzugefügt werden
-	$menubar_item_bearbeiten->set_submenu($bearbeiten_menu);
+	my $search_action = Glib::IO::SimpleAction->new('search', undef);
+	$search_action->signal_connect('activate'=>\&search_dialog);
+	$window->add_action($search_action);
 	
-	# EINSTELLUNGEN - MENU
-	my $settings_menu = Gtk3::Menu->new();
+	# SYNTAX CHOICE
+	my $toggle_syntax_action = Glib::IO::SimpleAction->new_stateful('toggle_syntax', Glib::VariantType->new('s'), Glib::Variant->new_string('None'));
+	$toggle_syntax_action->signal_connect('activate'=>\&toggle_syntax_cb);
+	$window->add_action($toggle_syntax_action);
 
-	# append to the $bearbeiten_menu the following options
-	# Syntax Hervorhebung
-	my $menu_item_syntax = Gtk3::MenuItem->new();
-	$menu_item_syntax->set_label("Syntax Hervorhebung");
-	$settings_menu->insert($menu_item_syntax,1);
-	$menu_item_syntax->signal_connect("activate" => sub {});
-	
-	# Füge dem Menüpunkt Syntax Hervorhebung Menupunkte mit den einzelnen
-	# Sprachdateien hinzu
-	my $syntax_menu=Gtk3::Menu->new();
-	# Der erste Eintrag soll die Syntax Hervorhebung ausschalten
-	$menuitems_syntax{"None"} = Gtk3::CheckMenuItem->new('None');
-	$menuitems_syntax{"None"}->signal_connect('toggled'=>\&toggle_syntax_cb, \$selected_item);
-	$syntax_menu->insert($menuitems_syntax{"None"}, 0);
-	# Nun werden die vorhandenen Sprachdateien hinzugefügt
-	my $i=1;
-	foreach my $key (@languages) {
-		# Erstelle ein Auswahlitem
-		$menuitems_syntax{"$key"} = Gtk3::CheckMenuItem->new("$key");
-		$menuitems_syntax{"$key"}->signal_connect('toggled'=>\&toggle_syntax_cb, \$selected_item);
-		$syntax_menu->insert($menuitems_syntax{"$key"}, $i);
-		$i++;
-	}
-	
-	# Füge die Syntaxoptionen dem Menüpunkt "Syntax Hervorhebungen" hinzu
-	$menu_item_syntax->set_submenu($syntax_menu);
-	
-	# das Menu muss nun dem Menubaritem hinzugefügt werden
-	$menubar_item_settings->set_submenu($settings_menu);
-	
-	# HILFE - MENU
-	my $help_menu = Gtk3::Menu->new();
+	# A GTK Notebook for the tabs
+	$notebook = Gtk3::Notebook->new();
+	$notebook->signal_connect("switch-page" => \&change_current_page, $toggle_syntax_action);
 
-	# append to the $help_menu the following options
-	# Über PLedit
-	my $menu_item_about = Gtk3::MenuItem->new();
-	$menu_item_about->set_label("Über PLedit");
-	$help_menu->insert($menu_item_about,1);
-	$menu_item_about->signal_connect("activate" => \&about_cb);
+	# add the menubar, toolbar and the notebook to a grid
+	my $grid=Gtk3::Grid->new();
+	#$grid->attach($toolbar,0,1,1,1);
+	$grid->attach($notebook,0,2,1,1);
 
-	# das Menu muss nun dem Menubaritem hinzugefügt werden
-	$menubar_item_help->set_submenu($help_menu);
+	# add the grid to the window
+	$window->add($grid);
 
-	return $menubar;
+	# return the ApplicationWindow
+	return $window;
+}	
 
-}
 
 # Function if one syntax highlight module in the Menuitem 
 # "Einstellungen->Syntax Hervorhebung" is toggled
 sub toggle_syntax_cb {
-	my ($menuitem, $old_selected) = @_;
-	my $old_selected = $$old_selected;
-	if ($menuitem->get_active()) {
-		my $label = $menuitem->get_label();
-		print "$label aktiviert \n";
-		# Ändere die Sprache des aktuellen Buffers
-		if ($label eq "None") {
-			$buffer[$n]->set_language();
-		}
-		else {
-			my $lang = $lm->get_language("$label");
-			$buffer[$n]->set_language($lang);
-		}
-		$selected_item = $menuitem;
-		$old_selected->set_active(FALSE) if ($old_selected);
-	}
-	else {
-		my $label = $menuitem->get_label();
-		print "$label deaktiviert \n";
-	}
+	my ($action, $parameter) = @_;
+
+	my $string = $parameter->get_string();
+	my $lang = $lm->get_language("$string");
+	$buffer[$n]->set_language($lang);
+
+	# Note that we set the state of the action
+	$action->set_state($parameter);
 }
 
 # THE FUNCTION TO CREATE THE TOOLBAR
+# AT THE MOMENT DISABLED
 sub create_toolbar {
 	my $toolbar = Gtk3::Toolbar->new();
 	
@@ -288,7 +203,7 @@ sub create_toolbar {
 sub new_callback {
 	# Erhalte die Nummer der Seite (=Anzahl aller Seiten)
 	$m = $notebook->get_n_pages();
-
+	
 	# a scrolled window for the textview
 	my $scrolled_window = Gtk3::ScrolledWindow->new();
 	$scrolled_window->set_policy("automatic", "automatic");
@@ -585,8 +500,8 @@ sub search_cb {
 	my $label = $button->get_label();
 	
 	if ($label eq 'Schließen') {
-		$start='';
-		$end='';
+		$startmark='';
+		$endmark='';
 		$search_dialog->destroy();
 	}
 	elsif ($label eq 'Suchen') {
@@ -595,24 +510,18 @@ sub search_cb {
 	elsif ($label eq 'Ersetzen') {
 		# Replacement is only possible, if there is a current search result
 		# This is the case, if $end is defined (see above)
-		if ($end) {		
-			# Before replacement we need the offset of the 
-			# $start Iterator to create a new Gtk3::TextIter after
-			# Replacement
-			my $offset_start = $start->get_offset();
-	
+		if ($endmark) {		
+			# for replacing we need again the iter at the start- and 
+			# endmark
+			my $startiter = $buffer[$n]->get_iter_at_mark($startmark);
+			my $enditer = $buffer[$n]->get_iter_at_mark($endmark);
 			# Replace the current search result
-			my $replace=$search_context[$n]->replace($start, $end, "$replacestring", -1);
-		
-			# IMPORTANT: Because the TextBuffer is changed, we need a 
-			# new Gtk3::TextIter! otherwise we would get an error!
-			# Therefore initialize the TextIter $end at position $offset_start!
-			$end = $buffer[$n]->get_iter_at_offset($offset_start);
+			my $replace=$search_context[$n]->replace($startiter, $enditer, "$replacestring", -1);
 			
 			# After the replacement it will be usually jumped to the
 			# next search result
 			search($searchstring, $replacestring);
-		}	
+		}
 	}
 }
 
@@ -636,45 +545,56 @@ sub search {
 		# because there $end is not defined
 		my $cursor = $buffer[$n]->get_insert();
 		my $startiter = $buffer[$n]->get_iter_at_mark($cursor);
+		my $enditer;
 		# The Gtk3::SourceView::SearchContext::forward
 		# function returns an array with one Gtk3::Textiter
 		# each start and end position of the search result
 		my @treffer;
-		# If one search run is already passed, wen want to start the 
+		# If one search run is already passed, we want to start the 
 		# current search run after the previous search result
-		if ($end) {
+		if ($endmark) {
 			# Note: To avoid warning, we first check, whether there is
 			# a further result
+			# therefore we have again to reconvert the endmark to an iter
+			my $end = $buffer[$n]->get_iter_at_mark($endmark);
 			if ($search_context[$n]->forward($end)) {
 				# perform the search and save the Gtk3::Iters to @treffer
 				@treffer = $search_context[$n]->forward($end);
 				# Save the Gtk3::TextIter for the start position of the result
 				# in the variable $start
-				$start = @treffer[0];
+				$startiter = @treffer[0];
 				# Save the Gtk3::TextIter for the end position of the result
 				# in the variable $end
-				$end = @treffer[1];
+				$enditer = @treffer[1];
 				# Note: The concept of "current match" doesn't exist yet. 
 				# A way to highlight differently the current match is to select it.
-				$buffer[$n]->select_range($start, $end);
-				# get a mark of the selection bound
-				$buffer[$n]->create_mark('mark',$start,TRUE);
-				my $mark=$buffer[$n]->get_mark('mark');
+				$buffer[$n]->select_range($startiter, $enditer);
+				# important: We need a mark instead of an iter in the
+				# case, that the buffer is changed in the meantime, AND
+				# scroll to  the selection bound
+				$buffer[$n]->create_mark('startmark',$startiter,TRUE);
+				$startmark=$buffer[$n]->get_mark('startmark');
+				$buffer[$n]->create_mark('endmark',$enditer,TRUE);
+				$endmark=$buffer[$n]->get_mark('endmark');
 				# scroll to the selection
-				my $x = $textview[$n]->scroll_to_mark($mark, 0.0,TRUE, 0.0, 0.4);
+				my $x = $textview[$n]->scroll_to_mark($startmark, 0.0,TRUE, 0.0, 0.4);
 			}
 			# If no further result exists, we start searching from the beginning
 			else {
 				$end = $buffer[$n]->get_start_iter();
 				@treffer = $search_context[$n]->forward($end);
-				$start = @treffer[0];
-				$end = @treffer[1];
-				$buffer[$n]->select_range($start, $end);
-				# get a mark of the selection bound
-				$buffer[$n]->create_mark('mark',$start,TRUE);
-				my $mark=$buffer[$n]->get_mark('mark');
+				$startiter = @treffer[0];
+				$enditer = @treffer[1];
+				$buffer[$n]->select_range($startiter, $enditer);
+				# important: We need a mark instead of an iter in the
+				# case, that the buffer is changed in the meantime, AND
+				# scroll to  the selection bound
+				$buffer[$n]->create_mark('startmark',$startiter,TRUE);
+				$startmark=$buffer[$n]->get_mark('startmark');
+				$buffer[$n]->create_mark('endmark',$enditer,TRUE);
+				$endmark=$buffer[$n]->get_mark('endmark');
 				# scroll to the selection
-				my $x = $textview[$n]->scroll_to_mark($mark, 0.0,TRUE, 0.0, 0.4);
+				my $x = $textview[$n]->scroll_to_mark($startmark, 0.0,TRUE, 0.0, 0.4);
 			}
 		}
 		# In the first search run $end is not defined
@@ -683,63 +603,21 @@ sub search {
 		else {
 			if ($search_context[$n]->forward($startiter)) {
 				@treffer = $search_context[$n]->forward($startiter);
-				$start = @treffer[0];
-				$end = @treffer[1];
-				$buffer[$n]->select_range($start, $end);
-			# get a mark of the selection bound
-				$buffer[$n]->create_mark('mark',$start,TRUE);
-				my $mark=$buffer[$n]->get_mark('mark');
+				$startiter = @treffer[0];
+				$enditer = @treffer[1];
+				$buffer[$n]->select_range($startiter, $enditer);
+				# important: We need a mark instead of an iter in the
+				# case, that the buffer is changed in the meantime, AND
+				# scroll to  the selection bound
+				$buffer[$n]->create_mark('startmark',$startiter,TRUE);
+				$startmark=$buffer[$n]->get_mark('startmark');
+				$buffer[$n]->create_mark('endmark',$enditer,TRUE);
+				$endmark=$buffer[$n]->get_mark('endmark');
 				# scroll to the selection
-				my $x = $textview[$n]->scroll_to_mark($mark, 0.0,TRUE, 0.0, 0.4);
+				my $x = $textview[$n]->scroll_to_mark($startmark, 0.0,TRUE, 0.0, 0.4);
 			}
 		}
 }
-
-# call back function for ABOUT
-# ABOUT DIALOG
-sub about_cb {
-	# a Gtk3::AboutDialog
-	my $aboutdialog = Gtk3::AboutDialog->new();
-	$aboutdialog->set_transient_for($window);
-	$aboutdialog->set_logo_icon_name('dialog-information');
-
-	# lists of authors and documenters (will be used later)
-	my @authors = ('Maximilian Lika');
-	my @documenters = ('Maximilian Lika');
-
-	# we fill in the aboutdialog
-	$aboutdialog->set_program_name('PLedit');
-	$aboutdialog->set_version('0.01');
-	$aboutdialog->set_comments("A simple but useful utf8 Texteditor written \n in Perl using Gtk3::SourceView");
-	$aboutdialog->set_copyright(
-		"Copyright \xa9 2016 Maximilian Lika");
-	# important: set_authors and set_documenters need an array ref!
-	# with a normal array it doesn't work!	
-	$aboutdialog->set_authors(\@authors);
-	$aboutdialog->set_documenters(\@documenters);
-	my $license = 	"This library is free software; you can redistribute it and/or modify\n". 
-					"it under the same terms as Perl itself, either Perl version 5.20.2 \n". 
-					"or, at your option, any later version of Perl 5 you may have available.\n".
-					"This module is distributed in the hope that it will be useful, but \n".
-					"WITHOUT ANY WARRANTY; without even the implied warranty of\n".
-					"MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.";
-	$aboutdialog->set_license("$license");
-	$aboutdialog->set_website('http://github/MaxPerl/PLedit');
-	$aboutdialog->set_website_label('GitHub Repository of PLedit');
-
-	# to close the aboutdialog when 'close' is clicked we connect
-	# the 'response' signal to on_close
-	$aboutdialog->signal_connect('response'=>\&close_about);
-	# show the aboutdialog
-	$aboutdialog->show();
-	}
-
-# destroy the aboutdialog
-sub close_about {
-	my ($aboutdialog) = @_;
-	$aboutdialog->destroy();
-	}
-
 
 # call bach function if TEXT IN A BUFFER CHANGED
 sub changed_text {
@@ -761,14 +639,15 @@ sub changed_text {
 # callback function for CHANGING THE TAB/PAGE
 # Wenn der Benutzer die Seite wechselt, muss auch die Variable $n auf die neue Seite verweisen
 sub change_current_page {
-	my ($notebook, $page_content, $page) = @_;
+	my ($notebook, $page_content, $page, $toggle_syntax_action) = @_;
 	$n = $page;
 	
 	# Ändere die Language Einstellung
 	# Ändere die Sprache des aktuellen Buffers
 	my $lang = $buffer[$n]->get_language();
 	my $lang_id = $lang->get_id();
-	$menuitems_syntax{"$lang_id"}->set_active(TRUE);
+	my $parameter = Glib::Variant->new_string("$lang_id");
+	$toggle_syntax_action->set_state($parameter);
 }
 
 
@@ -788,8 +667,6 @@ sub close_tab {
 		$messagedialog->show();
 		}
 	else {
-		# and remove the page
-		$notebook->remove_page($m);
 		# splice the elements with index $m from the arrays
 		splice @filenames, $m, 1;
 		splice @label, $m, 1;
@@ -797,7 +674,11 @@ sub close_tab {
 		splice @buttons, $m, 1;
 		splice @buffer, $m, 1;
 		splice @textview, $m, 1;
-		
+		# and remove the page
+		$notebook->remove_page($m);
+		# set $n to the current page
+		my $page = $notebook->get_current_page();
+		$n = $page;
 		# Das durch die x-Button jeweils übergebene Argument muss noch geändert werden
 		# da sich der Index um 1 verringert hat
 		for (my $i = 0; $i<= $#buttons; $i++) {
@@ -823,8 +704,6 @@ sub close_tab_save_dialog {
 			
 			print "$content in $filenames[$m] gespeichert \n";
 			
-			# and remove the page
-			$notebook->remove_page($m);
 			# splice the elements with index $m from the arrays
 			splice @filenames, $m, 1;
 			splice @label, $m, 1;
@@ -832,7 +711,11 @@ sub close_tab_save_dialog {
 			splice @buttons, $m, 1;
 			splice @buffer, $m, 1;
 			splice @textview, $m, 1;
-		
+			# and remove the page
+			$notebook->remove_page($m);
+			# set $n to the current page
+			my $page = $notebook->get_current_page();
+			$n = $page;		
 			# Das durch die x-Button jeweils übergebene Argument muss noch geändert werden
 			# da sich der Index um 1 verringert hat
 			for (my $i = 0; $i<= $#buttons; $i++) {
@@ -862,8 +745,6 @@ sub close_tab_save_dialog {
 		}
 	}
 	else {
-		# and remove the page
-			$notebook->remove_page($m);
 			# splice the elements with index $m from the arrays
 			splice @filenames, $m, 1;
 			splice @label, $m, 1;
@@ -871,7 +752,11 @@ sub close_tab_save_dialog {
 			splice @buttons, $m, 1;
 			splice @buffer, $m, 1;
 			splice @textview, $m, 1;
-		
+			# and remove the page
+			$notebook->remove_page($m);
+			# set $n to the current page
+			my $page = $notebook->get_current_page();
+			$n = $page;
 			# Das durch die x-Button jeweils übergebene Argument muss noch geändert werden
 			# da sich der Index um 1 verringert hat
 			for (my $i = 0; $i<= $#buttons; $i++) {
@@ -905,8 +790,6 @@ sub save_before_close_tab {
 		print "$content in $filenames[$n] gespeichert \n";
 		
 		$dialog->destroy();
-		# and remove the page
-		$notebook->remove_page($m);
 		# splice the elements with index $m from the arrays
 		splice @filenames, $m, 1;
 		splice @label, $m, 1;
@@ -914,7 +797,11 @@ sub save_before_close_tab {
 		splice @buttons, $m, 1;
 		splice @buffer, $m, 1;
 		splice @textview, $m, 1;
-		
+		# and remove the page
+		$notebook->remove_page($m);
+		# set $n to the current page
+		my $page = $notebook->get_current_page();
+		$n = $page;
 		# Das durch die x-Button jeweils übergebene Argument muss noch geändert werden
 		# da sich der Index um 1 verringert hat
 		for (my $i = 0; $i<= $#buttons; $i++) {
@@ -957,7 +844,7 @@ sub quit_cb {
 	}
 	else {
 		print "Terminating... \n";
-		Gtk3->main_quit;
+		
 	}
 }
 
@@ -974,7 +861,7 @@ sub quit_save_dialog {
 			print $fh "$content";
 			close $fh;
 			
-			Gtk3->main_quit();
+			
 		}
 		else {
 			# create a filechooserdialog to save:
@@ -1001,13 +888,13 @@ sub quit_save_dialog {
 	$widget->destroy();
 	}
 	elsif ($response_id eq 'no') {
-		Gtk3->main_quit();
+		
 	}
 	elsif ($response_id eq 'cancel') {
 		$widget->destroy();
 	}
 	elsif ($response_id eq 'ok') {
-		Gtk3->main_quit();
+		
 	}
 
 } 
@@ -1032,10 +919,216 @@ sub save_before_quit {
 		close $fh;
 		
 		print "$content in $filenames[$n] gespeichert \n";
-		Gtk3->main_quit();
 	}
 	# if response id is "CANCEL" (the button "Cancel" has been clicked)
 	elsif ($response_id eq "cancel") {
 		$dialog->destroy();
 		}
 }
+
+
+# The MAIN Program
+package main;
+
+use strict;
+use warnings;
+use Gtk3;
+use Gtk3::SourceView;
+use Glib ('TRUE','FALSE');
+
+# flag 'non-unique' is needed so that no single-instance negotiation is done,
+# that means the App doesn't attemp to become owner of the Application ID and doesn't
+# check if an existing owner already exists
+my $app = Gtk3::Application->new('PLedit.id','non-unique');
+
+$app->signal_connect('startup' => \&_init);
+$app->signal_connect('activate' => \&_build_ui);
+$app->signal_connect('shutdown' => \&_shutdown);
+
+$app->run();
+
+exit;
+
+# The CALLBACK FUNCTIONS to the SIGNALS fired by the main function.
+sub _init {
+	my ($app) = @_;
+	
+	# the MENU
+	my $syntax_section =
+	"<item>
+		<attribute name = 'label'>None</attribute>
+		<attribute name = 'action'>win.toggle_syntax</attribute>
+		<attribute name = 'target'>None</attribute>
+	</item>";
+
+	# Nun werden die vorhandenen Sprachdateien hinzugefügt
+	# Variables for the SYNTAX HIGHLIGHTING FUNCTION
+	# Create a Language Manager
+	#my $lm = Gtk3::SourceView::LanguageManager->new();
+	#my @languages = $lm->get_language_ids();
+
+	my $i=1;
+	foreach my $key (@languages) {
+		my $item =
+			"<item>
+			<attribute name = 'label'>$key</attribute>
+			<attribute name = 'action'>win.toggle_syntax</attribute>
+			<attribute name = 'target'>$key</attribute>
+		</item>";
+		$syntax_section = $syntax_section . $item;
+	}
+	my $menu =
+	"<?xml version='1.0'? encoding='UTF8'?>
+	<interface>
+		<menu id='menubar'>
+			<submenu>
+				<attribute name='label'>File</attribute>
+				<section>
+					<item>
+						<attribute name='label'>New</attribute>
+						<attribute name='action'>win.new</attribute>
+						<attribute name='accel'>&lt;Primary&gt;n</attribute>
+					</item>
+					<item>
+						<attribute name='label'>Open</attribute>
+						<attribute name='action'>win.open</attribute>
+						<attribute name='accel'>&lt;Primary&gt;o</attribute>
+					</item>
+					<item>
+						<attribute name='label'>Save</attribute>
+						<attribute name='action'>win.save</attribute>
+						<attribute name='accel'>&lt;Primary&gt;s</attribute>
+					</item>
+					<item>
+						<attribute name='label'>Save as</attribute>
+						<attribute name='action'>win.save_as</attribute>
+					</item>
+					<item>
+						<attribute name='label'>Quit</attribute>
+						<attribute name='action'>app.quit</attribute>
+						<attribute name='accel'>&lt;Primary&gt;q</attribute>
+					</item>
+				</section>
+			</submenu>
+			<submenu>
+				<attribute name='label'>Edit</attribute>
+				<section>
+					<item>
+						<attribute name='label'>Undo</attribute>
+						<attribute name='action'>win.undo</attribute>
+						<attribute name='accel'>&lt;Primary&gt;z</attribute>
+					</item>
+					<item>
+						<attribute name='label'>Redo</attribute>
+						<attribute name='action'>win.redo</attribute>
+						<attribute name='accel'>&lt;Primary&gt;y</attribute>
+					</item>
+					<item>
+						<attribute name='label'>Search/Replace</attribute>
+						<attribute name='action'>win.search</attribute>
+						<attribute name='accel'>&lt;Primary&gt;f</attribute>
+					</item>
+				</section>
+			</submenu>
+			<submenu>
+				<attribute name='label'>Settings</attribute>
+				<section>
+					<submenu>
+						<attribute name='label'>Syntax-Highlighting</attribute>
+						<section>
+							$syntax_section
+						</section>
+					</submenu>
+				</section>
+			</submenu>
+			<submenu>
+				<attribute name='label'>Help</attribute>
+				<section>
+					<item>
+						<attribute name='label'>About PLedit</attribute>
+						<attribute name='action'>app.about</attribute>
+					</item>
+				</section>
+			</submenu>
+		</menu>
+	</interface>";
+	
+	# A builder to add the Menu
+	my $builder = Gtk3::Builder->new();
+	$builder->add_from_string($menu);
+	
+	# Add the menubar to the application
+	my $menubar = $builder->get_object('menubar');
+	
+	# the App.Actions
+	my $quit_action = Glib::IO::SimpleAction->new('quit',undef);
+	$quit_action->signal_connect('activate' => sub {$app->quit();});
+	$app->add_action($quit_action);
+	
+	my $about_action = Glib::IO::SimpleAction->new('about',undef);
+	$about_action->signal_connect('activate' => \&about_cb);
+	$app->add_action($about_action);
+	
+	$app->set_menubar($menubar);
+}
+
+sub _build_ui {
+	my ($app) = @_;
+	
+	# Building the Gtk3::ApplicationWindow and its content is done by a seperate class
+	$window = MyWindow->new($app);
+	$window->show_all();
+}
+
+sub _shutdown {
+	my ($app) = @_;
+
+	$window->quit_cb();
+	$app->quit();
+}
+
+# call back function for ABOUT
+# ABOUT DIALOG
+sub about_cb {
+	# a Gtk3::AboutDialog
+	my $aboutdialog = Gtk3::AboutDialog->new();
+	$aboutdialog->set_transient_for($window);
+	$aboutdialog->set_logo_icon_name('dialog-information');
+
+	# lists of authors and documenters (will be used later)
+	my @authors = ('Maximilian Lika');
+	my @documenters = ('Maximilian Lika');
+
+	# we fill in the aboutdialog
+	$aboutdialog->set_program_name('PLedit');
+	$aboutdialog->set_version('0.02');
+	$aboutdialog->set_comments("A simple but useful utf8 Texteditor written \n in Perl using Gtk3::SourceView");
+	$aboutdialog->set_copyright(
+		"Copyright \xa9 2016 Maximilian Lika");
+	# important: set_authors and set_documenters need an array ref!
+	# with a normal array it doesn't work!	
+	$aboutdialog->set_authors(\@authors);
+	$aboutdialog->set_documenters(\@documenters);
+	my $license = 	"This library is free software; you can redistribute it and/or modify\n". 
+					"it under the same terms as Perl itself, either Perl version 5.20.2 \n". 
+					"or, at your option, any later version of Perl 5 you may have available.\n".
+					"This module is distributed in the hope that it will be useful, but \n".
+					"WITHOUT ANY WARRANTY; without even the implied warranty of\n".
+					"MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.";
+	$aboutdialog->set_license("$license");
+	$aboutdialog->set_website('http://github/MaxPerl/PLedit');
+	$aboutdialog->set_website_label('GitHub Repository of PLedit');
+
+	# to close the aboutdialog when 'close' is clicked we connect
+	# the 'response' signal to on_close
+	$aboutdialog->signal_connect('response'=>\&close_about);
+	# show the aboutdialog
+	$aboutdialog->show();
+	}
+
+# destroy the aboutdialog
+sub close_about {
+	my ($aboutdialog) = @_;
+	$aboutdialog->destroy();
+	}
+
