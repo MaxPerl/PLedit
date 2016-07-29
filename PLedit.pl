@@ -62,7 +62,6 @@ use Gtk3::SourceView;
 # Inherit the methods, properties etc. of Gtk3::ApplicationWindow
 use base 'Gtk3::ApplicationWindow';
 
-
 # THE CONSTRUCTOR FUNCTION
 sub new {
 	my ($window, $app) = @_;
@@ -137,7 +136,6 @@ sub new {
 	# return the ApplicationWindow
 	return $window;
 }	
-
 
 # Function if one syntax highlight module in the Menuitem 
 # "Einstellungen->Syntax Hervorhebung" is toggled
@@ -814,118 +812,6 @@ sub save_before_close_tab {
 		}
 }
 
-# Functions at the DELETE-EVENT
-sub quit_cb {
-	# Erhalte die Anzahl der offenen Tabs:
-	my $pages = $notebook->get_n_pages();
-	if ($pages == 1 && $changed_status[$n] == 1) {
-		# a Gtk3::MessageDialog
-		my $messagedialog = Gtk3::MessageDialog->new($window,
-							'modal',
-							'other',
-							'yes_no',
-							"Datei wurde geändert. Aenderungen speichern?");
-		
-		# connect the response to the function dialog_response
-		$messagedialog->signal_connect('response'=>\&quit_save_dialog, $m);
-		$messagedialog->show_all();
-	}
-	elsif ($pages > 1) {
-		# a Gtk3::MessageDialog
-		my $messagedialog = Gtk3::MessageDialog->new($window,
-							'modal',
-							'other',
-							'ok_cancel',
-							"Es sind mehrere Tabs geöffnet. Nicht gespeicherte Änderungen gehen verloren. PLedit dennoch beenden?");
-		
-		# connect the response to the function dialog_response
-		$messagedialog->signal_connect('response'=>\&quit_save_dialog, $m);
-		$messagedialog->show_all();
-	}
-	else {
-		print "Terminating... \n";
-		
-	}
-}
-
-# function, if TEXT IN A SINGLE TAB WAS CHANGED AND SHOULD BE SAVED BEFORE EXIT
-sub quit_save_dialog {
-	my ($widget, $response_id, $m) = @_;
-	if ($response_id eq 'yes') {
-		if ($filenames[$m]) {
-			# get the content of the buffer, without hidden characters
-			my ($start, $end) = $buffer[$m]->get_bounds();
-			my $content = $buffer[$m]->get_text($start, $end, FALSE);
-	
-			open my $fh, ">:encoding(utf8)", $filenames[$m];
-			print $fh "$content";
-			close $fh;
-			
-			
-		}
-		else {
-			# create a filechooserdialog to save:
-			# the arguments are: title of the window, parent_window, action,
-			# (buttons, response)
-			my $save_dialog = Gtk3::FileChooserDialog->new("Pick a file", 
-							$window, 
-							"save", 
-							("gtk-cancel", "cancel",
-							"gtk-save", "accept"));
-			# the dialog will present a confirmation dialog if the user types a file name
-			# that already exists
-			$save_dialog->set_do_overwrite_confirmation(TRUE);
-			# dialog always on top of the textview window
-			#$save_dialog->set_modal(TRUE);
-
-			# connect the dialog to the callback function save_response_cb
-			$save_dialog->signal_connect("response" => \&save_before_quit, $m);
-
-			# show the dialog
-			$save_dialog->show();
-		}
-	# finally destroy the messagedialog
-	$widget->destroy();
-	}
-	elsif ($response_id eq 'no') {
-		
-	}
-	elsif ($response_id eq 'cancel') {
-		$widget->destroy();
-	}
-	elsif ($response_id eq 'ok') {
-		
-	}
-
-} 
-
-# SAVING THE TEXT IN A SINGLE TAB BEFOR EXIT
-sub save_before_quit {
-	my ($dialog, $response_id,$m) = @_;
-	my $save_dialog = $dialog;
-	
-	# if response id is "ACCEPTED" (the button "Open" has been clicked)
-	if ($response_id eq "accept") {
-		
-		# Erhalte den Filename
-		$filenames[$n] = $save_dialog->get_filename();
-
-		# get the bcontent of the buffer, without hidden characters
-		my ($start, $end) = $buffer[$n]->get_bounds();
-		my $content = $buffer[$n]->get_text($start, $end, FALSE);
-
-		open my $fh, ">:encoding(utf8)", $filenames[$n];
-		print $fh "$content";
-		close $fh;
-		
-		print "$content in $filenames[$n] gespeichert \n";
-	}
-	# if response id is "CANCEL" (the button "Cancel" has been clicked)
-	elsif ($response_id eq "cancel") {
-		$dialog->destroy();
-		}
-}
-
 
 # The MAIN Program
 package main;
@@ -1062,7 +948,7 @@ sub _init {
 	
 	# the App.Actions
 	my $quit_action = Glib::IO::SimpleAction->new('quit',undef);
-	$quit_action->signal_connect('activate' => sub {$app->quit();});
+	$quit_action->signal_connect('activate' => sub {quit_cb();});
 	$app->add_action($quit_action);
 	
 	my $about_action = Glib::IO::SimpleAction->new('about',undef);
@@ -1077,15 +963,134 @@ sub _build_ui {
 	
 	# Building the Gtk3::ApplicationWindow and its content is done by a seperate class
 	$window = MyWindow->new($app);
+	$window->signal_connect('delete_event' => sub {
+		quit_cb();
+		Gtk3::EVENT_STOP;
+	});
 	$window->show_all();
 }
 
 sub _shutdown {
 	my ($app) = @_;
-
-	$window->quit_cb();
-	$app->quit();
+	#$window->quit_cb();
+	#$app->quit();
 }
+
+sub quit_cb {
+	# Erhalte die Anzahl der offenen Tabs:
+	my $pages = $notebook->get_n_pages();
+	print "Quit_CB aktiviert. $notebook \n $pages pages \n";
+	if ($pages == 1 && $changed_status[$n] == 1) {
+		# a Gtk3::MessageDialog
+		my $messagedialog = Gtk3::MessageDialog->new($window,
+							'modal',
+							'other',
+							'yes_no',
+							"Datei wurde geändert. Aenderungen speichern?");
+		
+		# connect the response to the function dialog_response
+		$messagedialog->signal_connect('response'=>\&quit_save_dialog, $m);
+		$messagedialog->show_all();
+	}
+	elsif ($pages > 1) {
+		# a Gtk3::MessageDialog
+		my $messagedialog = Gtk3::MessageDialog->new($window,
+							'modal',
+							'other',
+							'ok_cancel',
+							"Es sind mehrere Tabs geöffnet. Nicht gespeicherte Änderungen gehen verloren. PLedit dennoch beenden?");
+		
+		# connect the response to the function dialog_response
+		$messagedialog->signal_connect('response'=>\&quit_save_dialog, $m);
+		$messagedialog->show_all();
+	}
+	else {
+		print "Terminating... \n";
+		$app->quit();
+	}
+}
+	
+
+# function, if TEXT IN A SINGLE TAB WAS CHANGED AND SHOULD BE SAVED BEFORE EXIT
+sub quit_save_dialog {
+	my ($widget, $response_id, $m) = @_;
+	if ($response_id eq 'yes') {
+		if ($filenames[$m]) {
+			# get the content of the buffer, without hidden characters
+			my ($start, $end) = $buffer[$m]->get_bounds();
+			my $content = $buffer[$m]->get_text($start, $end, FALSE);
+	
+			open my $fh, ">:encoding(utf8)", $filenames[$m];
+			print $fh "$content";
+			close $fh;
+			$app->quit();
+			
+		}
+		else {
+			# create a filechooserdialog to save:
+			# the arguments are: title of the window, parent_window, action,
+			# (buttons, response)
+			my $save_dialog = Gtk3::FileChooserDialog->new("Pick a file", 
+							$window, 
+							"save", 
+							("gtk-cancel", "cancel",
+							"gtk-save", "accept"));
+			# the dialog will present a confirmation dialog if the user types a file name
+			# that already exists
+			$save_dialog->set_do_overwrite_confirmation(TRUE);
+			# dialog always on top of the textview window
+			#$save_dialog->set_modal(TRUE);
+
+			# connect the dialog to the callback function save_response_cb
+			$save_dialog->signal_connect("response" => \&save_before_quit, $m);
+
+			# show the dialog
+			$save_dialog->show();
+
+			# and destroy the messagedialog
+			$widget->destroy();
+		}
+	}
+	elsif ($response_id eq 'no') {
+		$app->quit();
+	}
+	elsif ($response_id eq 'cancel') {
+		$widget->destroy();
+	}
+	elsif ($response_id eq 'ok') {
+		$app->quit();	
+	}
+}
+ 
+
+# SAVING THE TEXT IN A SINGLE TAB BEFOR EXIT
+sub save_before_quit {
+	my ($dialog, $response_id,$m) = @_;
+	my $save_dialog = $dialog;
+	
+	# if response id is "ACCEPTED" (the button "Open" has been clicked)
+	if ($response_id eq "accept") {
+		
+		# Erhalte den Filename
+		$filenames[$n] = $save_dialog->get_filename();
+
+		# get the bcontent of the buffer, without hidden characters
+		my ($start, $end) = $buffer[$n]->get_bounds();
+		my $content = $buffer[$n]->get_text($start, $end, FALSE);
+
+		open my $fh, ">:encoding(utf8)", $filenames[$n];
+		print $fh "$content";
+		close $fh;
+		
+		print "$content in $filenames[$n] gespeichert \n";
+		$app->quit();
+	}
+	# if response id is "CANCEL" (the button "Cancel" has been clicked)
+	elsif ($response_id eq "cancel") {
+		$dialog->destroy();
+		}
+}
+
 
 # call back function for ABOUT
 # ABOUT DIALOG
@@ -1131,4 +1136,3 @@ sub close_about {
 	my ($aboutdialog) = @_;
 	$aboutdialog->destroy();
 	}
-
