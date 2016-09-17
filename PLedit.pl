@@ -18,8 +18,9 @@ my @filenames;
 my @label;
 # the changed-status of the tabs
 my @changed_status;
-# the close buttons on the tabs
+# the close buttons on the tabs and the handler_ids for the close tab signals
 my @buttons;
+my @handler_ids;
 # Eine Liste mit den ganzen Buffer, auf die die Speicher, Öffnen usw. Funktionen zugreifen können
 my @buffer;
 # Eine Liste mit allen Textviews
@@ -71,14 +72,6 @@ sub new {
 	$window->set_title ("PLedit");
 	$window->set_default_size (800, 400);
 	$window->set_icon_name("accessories-text-editor");
-	
-	# THE TOOLBAR
-	# we create the toolbar in the method create_toolbar (see below)
-	#my $toolbar = create_toolbar();
-	# the toolbar shall expand horizontally
-	#$toolbar->set_hexpand(TRUE);
-	# show the toolbar
-	#$toolbar->show();
 
 	# Window Actions
 	# NEW
@@ -150,50 +143,6 @@ sub toggle_syntax_cb {
 	$action->set_state($parameter);
 }
 
-# THE FUNCTION TO CREATE THE TOOLBAR
-# AT THE MOMENT DISABLED
-sub create_toolbar {
-	my $toolbar = Gtk3::Toolbar->new();
-	
-	# button "new"
-	my $new_icon = Gtk3::Image->new_from_icon_name('document-new', '3');
-	my $new_button = Gtk3::ToolButton->new($new_icon, 'Neu');
-	# label is shown
-	$new_button->set_is_important(TRUE);
-	# insert the toolbar at position 0 in the toolbar
-	$toolbar->insert($new_button, 0);
-	# show
-	$new_button->show();
-	# connect with cb function
-	$new_button->signal_connect('clicked'=>\&new_callback);
-	
-	# button "open"
-	my $open_icon = Gtk3::Image->new_from_icon_name('document-open', '3');
-	my $open_button = Gtk3::ToolButton->new($open_icon, 'Öffnen');
-	# label is shown
-	$open_button->set_is_important(TRUE);
-	# insert the toolbar at position 0 in the toolbar
-	$toolbar->insert($open_button, 1);
-	# show
-	$open_button->show();
-	# connect with cb function
-	$open_button->signal_connect('clicked'=>\&open_callback);
-	
-	# button "save"
-	my $save_icon = Gtk3::Image->new_from_icon_name('document-save', '3');
-	my $save_button = Gtk3::ToolButton->new($save_icon, 'Speichern');
-	# label is shown
-	$save_button->set_is_important(TRUE);
-	# insert the toolbar at position 0 in the toolbar
-	$toolbar->insert($save_button, 2);
-	# show
-	$save_button->show();
-	# connect with cb function
-	$save_button->signal_connect('clicked'=>\&save_callback);
-
-	return $toolbar;
-}
-
 
 # THE CALLBACK FUNCTIONS FOR THE MENU ITEMS
 
@@ -226,7 +175,7 @@ sub new_callback {
 		$label[$m] = Gtk3::Label->new("Untitled");
 	}
 	$buttons[$m] = Gtk3::Button->new_from_icon_name('window-close', '1');
-	$buttons[$m] ->signal_connect('clicked' => \&close_tab, $m);	
+	$handler_ids[$m] = $buttons[$m]->signal_connect('clicked' => \&close_tab, $m);	
 	$label_box->pack_start($label[$m], FALSE, FALSE, 3);
 	$label_box->pack_start($buttons[$m], FALSE, FALSE, 0);
 	$label_box->show_all;
@@ -670,6 +619,7 @@ sub close_tab {
 		splice @label, $m, 1;
 		splice @changed_status, $m, 1;
 		splice @buttons, $m, 1;
+		splice @handler_ids, $m, 1;
 		splice @buffer, $m, 1;
 		splice @textview, $m, 1;
 		# and remove the page
@@ -679,8 +629,11 @@ sub close_tab {
 		$n = $page;
 		# Das durch die x-Button jeweils übergebene Argument muss noch geändert werden
 		# da sich der Index um 1 verringert hat
+		# PROBLEM: signal_connect wird hinzugefügt nicht geändert, d.h. das 
+		# click event führt jetzt 2 cb funktionen aus!!!
 		for (my $i = 0; $i<= $#buttons; $i++) {
-			$buttons[$i]->signal_connect('clicked'=>\&close_tab, $i);
+			$buttons[$i]->signal_handler_disconnect($handler_ids[$i]);
+			$handler_ids[$i] = $buttons[$i]->signal_connect('clicked'=>\&close_tab, $i);
 		}
 		
 	} 
@@ -1106,7 +1059,7 @@ sub about_cb {
 
 	# we fill in the aboutdialog
 	$aboutdialog->set_program_name('PLedit');
-	$aboutdialog->set_version('0.02');
+	$aboutdialog->set_version('0.03');
 	$aboutdialog->set_comments("A simple but useful utf8 Texteditor written \n in Perl using Gtk3::SourceView");
 	$aboutdialog->set_copyright(
 		"Copyright \xa9 2016 Maximilian Lika");
