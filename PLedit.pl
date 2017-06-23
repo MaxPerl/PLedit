@@ -306,7 +306,6 @@ sub save_callback {
 		$label[$n]->set_label("$name");
 		
 		$changed_status[$n]="0";
-		print "$content in $filenames[$n] gespeichert \n";
 	}
 	else {
 		# use save_as_callback
@@ -370,7 +369,6 @@ sub save_response_cb {
 		my $name = substr($filenames[$n],$pos);
 		$label[$n]->set_label("$name");
 		$changed_status[$n]="";
-		print "$content in $filenames[$n] gespeichert \n";
 
 		$dialog->destroy();
 		}
@@ -653,8 +651,6 @@ sub close_tab_save_dialog {
 			print $fh "$content";
 			close $fh;
 			
-			print "$content in $filenames[$m] gespeichert \n";
-			
 			# splice the elements with index $m from the arrays
 			splice @filenames, $m, 1;
 			splice @label, $m, 1;
@@ -737,8 +733,6 @@ sub save_before_close_tab {
 		open my $fh, ">:encoding(utf8)", $filenames[$n];
 		print $fh "$content";
 		close $fh;
-		
-		print "$content in $filenames[$n] gespeichert \n";
 		
 		$dialog->destroy();
 		# splice the elements with index $m from the arrays
@@ -932,7 +926,6 @@ sub _shutdown {
 sub quit_cb {
 	# Erhalte die Anzahl der offenen Tabs:
 	my $pages = $notebook->get_n_pages();
-	print "Quit_CB aktiviert. $notebook \n $pages pages \n";
 	if ($pages == 1 && $changed_status[$n] == 1) {
 		# a Gtk3::MessageDialog
 		my $messagedialog = Gtk3::MessageDialog->new($window,
@@ -1035,7 +1028,6 @@ sub save_before_quit {
 		print $fh "$content";
 		close $fh;
 		
-		print "$content in $filenames[$n] gespeichert \n";
 		$app->quit();
 	}
 	# if response id is "CANCEL" (the button "Cancel" has been clicked)
@@ -1059,7 +1051,7 @@ sub about_cb {
 
 	# we fill in the aboutdialog
 	$aboutdialog->set_program_name('PLedit');
-	$aboutdialog->set_version('0.03');
+	$aboutdialog->set_version('0.04');
 	$aboutdialog->set_comments("A simple but useful utf8 Texteditor written \n in Perl using Gtk3::SourceView");
 	$aboutdialog->set_copyright(
 		"Copyright \xa9 2016 Maximilian Lika");
