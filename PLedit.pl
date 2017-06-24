@@ -70,7 +70,7 @@ sub new {
 	# construct the window
 	$window = bless Gtk3::ApplicationWindow->new($app);
 	$window->set_title ("PLedit");
-	$window->set_default_size (800, 400);
+	$window->set_default_size (800, 600);
 	$window->set_icon_name("accessories-text-editor");
 
 	# Window Actions
@@ -186,6 +186,11 @@ sub new_callback {
 	$buffer[$m]->set_highlight_syntax(TRUE);
 	$buffer[$m]->signal_connect('changed'=>\&changed_text);
 	
+	# Get Caecilia Layout Scheme
+	my $sm = Gtk3::SourceView::StyleSchemeManager->new();
+	my $scheme = $sm->get_scheme('tango');
+	$buffer[$m]->set_style_scheme($scheme);
+	
 	$notebook->append_page($scrolled_window,$label_box);
 	
 	# a textview
@@ -197,6 +202,10 @@ sub new_callback {
 	$textview[$m]->set_wrap_mode("word");
 	$textview[$m]->set_auto_indent(TRUE);
 	$textview[$m]->set_indent_on_tab(TRUE);
+	# Textgröße ändern
+	my $fontdesc = Pango::FontDescription->new();
+	$fontdesc->set_size(12*Pango::SCALE);
+	$textview[$m]->modify_font($fontdesc);
 	my @flags=("tab");
 	$textview[$m]->set_draw_spaces(\@flags);
 	
